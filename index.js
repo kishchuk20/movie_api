@@ -1,3 +1,4 @@
+require('dotenv').config();
 const mongoose = require('mongoose');
 const Models = require('./models.js');
 
@@ -16,42 +17,29 @@ const { check, validationResult } = require('express-validator');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// MongoDB connection
-mongoose.connect(process.env.CONNECTION_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-});
+mongoose.connect(process.env.CONNECTION_URI);
 
-// Middleware
+
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-let allowedOrigins = ['http://localhost:8080', 'http://testsite.com'];
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1) {
-      let message = 'The CORS policy for this application doesn’t allow access from origin ' + origin;
-      return callback(new Error(message), false);
-    }
-    return callback(null, true);
-  }
-}));
-
-let auth = require('./auth')(app);
 app.use(morgan('dev'));
-app.use(express.static(path.join(__dirname, 'public')));
 
-// Routes
+// Serve images from the 'public/images' folder
+app.use('/images', express.static(path.join(__dirname, 'public/images')));
+
+// Then your routes
 app.get('/', (req, res) => {
   res.send('Welcome to my Movie API!');
 });
-
-app.get('/movies', passport.authenticate('jwt', { session: false }), async (req, res) => {
-  await Movies.find()
+app.get('/movies', async (req, res) => {
+  Movies.find()
     .then((movies) => res.status(200).json(movies))
     .catch((error) => res.status(500).send('Error: ' + error));
 });
+
+
+
 
 app.get('/movies/:title', async (req, res) => {
   try {
@@ -71,6 +59,26 @@ app.get('/movies/genre/:genreName', async (req, res) => {
     res.status(500).send('Error: ' + error);
   }
 });
+
+app.post('/movies', async (req, res) => {
+  const { Title, Description, ImagePath, Genre, Director } = req.body;
+
+  const newMovie = new Movies({
+    Title,
+    Description,
+    ImagePath,
+    Genre,
+    Director
+  });
+
+  try {
+    const savedMovie = await newMovie.save();
+    res.status(201).json(savedMovie);
+  } catch (error) {
+    res.status(500).send('Error: ' + error.message);
+  }
+});
+
 
 app.post('/users', [
   check('Username', 'Username is required').isLength({ min: 5 }),
@@ -178,6 +186,15 @@ app.use((err, req, res, next) => {
   console.error('Application error:', err.stack);
   res.status(500).send('Application error: ' + err.message);
 });
+
+// Serve React frontend static files
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Handle React routing, return all requests to React app
+app.get('/{*splat}', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
